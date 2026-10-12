@@ -162,7 +162,7 @@
         body: JSON.stringify({
           topic,
           title: `${state.face} 今日官方鉴定：${state.name}`,
-          message: `${reason ? '理由：' + reason : '裁判未说明理由'}\n判定时间 ${time}`,
+          message: `${reason ? '理由：' + reason + '\n' : ''}判定时间 ${time}`,
           priority: 4,
           // 本地 file:// 打开时链接在他手机上没用，发布到网上后才带
           ...(showUrl.protocol === 'https:' ? { click: showUrl.href } : {}),

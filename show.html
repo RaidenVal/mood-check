@@ -191,7 +191,7 @@
     document.getElementById('reason').textContent = '（预览）判定理由会显示在这里';
   } else {
     const reason = params.get('r');
-    document.getElementById('reason').textContent = reason ? '理由：' + reason : '裁判未说明理由';
+    document.getElementById('reason').textContent = reason ? '理由：' + reason : '';
     const t = Number(params.get('t'));
     if (t) {
       document.getElementById('time').textContent = '判定时间 ' + new Date(t).toLocaleString('zh-CN', {
