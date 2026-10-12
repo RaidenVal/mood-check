@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="猪猪鉴定">
+<title>官方状态鉴定</title>
+<style>
+  :root {
+    --bg: #fff4f6;
+    --ink: #3a2a2e;
+    --muted: #8a747a;
+    --line: #3a2a2e;
+    --card: #ffffff;
+    --ok: #2e7d4f;
+    --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f171a;
+      --ink: #f6e9ec;
+      --muted: #a8949a;
+      --line: #f6e9ec;
+      --card: #2b2125;
+      --ok: #7fd3a0;
+      --err: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  main { max-width: 440px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .state {
+    aspect-ratio: 1;
+    border: 3px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    box-shadow: 4px 4px 0 var(--line);
+    cursor: pointer;
+  }
+  .state .face { display: block; font-size: 44px; margin-bottom: 8px; }
+  .state:active { transform: translate(4px, 4px); box-shadow: none; }
+  .state:disabled { opacity: .5; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 20px 0 6px; }
+  input {
+    width: 100%;
+    padding: 12px;
+    border: 3px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+    border-radius: 0;
+  }
+  #status { min-height: 24px; margin: 16px 0 0; font-size: 14px; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+  details { margin-top: 28px; font-size: 13px; color: var(--muted); }
+  details label { margin-top: 12px; }
+  .row { display: flex; gap: 8px; }
+  .row button {
+    border: 3px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    padding: 0 12px;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>🐷 官方状态鉴定</h1>
+  <p class="sub">裁判端 · 点一下即刻公示到手表</p>
+
+  <div class="grid" id="states"></div>
+
+  <label for="reason">判定理由（可选）</label>
+  <input id="reason" maxlength="80" placeholder="例：又把最后一块蛋糕吃了" autocomplete="off">
+
+  <p id="status" role="status"></p>
+
+  <details id="settings">
+    <summary>设置</summary>
+    <label for="topic">ntfy 主题（等于口令，别外传）</label>
+    <div class="row">
+      <input id="topic" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" id="random">随机</button>
+    </div>
+    <p>他的手机在 ntfy App 里订阅同一个主题，手表打开该 App 的通知同步。</p>
+  </details>
+</main>
+
+<script>
+  const STATES = [
+    { key: 'cry', name: '猪cry', face: '😭' },
+    { key: 'happy', name: '猪happy', face: '😄' },
+    { key: 'emo', name: '猪emo', face: '🌧️' },
+    { key: 'heiya', name: '猪嘿呀', face: '💪' },
+  ];
+  const NTFY_URL = 'https://ntfy.sh/';
+  const TOPIC_KEY = 'mood-check-topic';
+
+  const $ = (id) => document.getElementById(id);
+  const topicInput = $('topic');
+  const statusEl = $('status');
+
+  function loadTopic() {
+    try { return localStorage.getItem(TOPIC_KEY) || ''; } catch { return ''; }
+  }
+  function saveTopic(value) {
+    try { localStorage.setItem(TOPIC_KEY, value); } catch {}
+  }
+  function setStatus(text, kind) {
+    statusEl.textContent = text;
+    statusEl.className = kind || '';
+  }
+
+  topicInput.value = loadTopic();
+  if (!topicInput.value) $('settings').open = true;
+  topicInput.addEventListener('change', () => saveTopic(topicInput.value.trim()));
+
+  $('random').addEventListener('click', () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(12));
+    topicInput.value = 'pig-' + Array.from(bytes, (b) => b.toString(36).padStart(2, '0')).join('');
+    saveTopic(topicInput.value);
+  });
+
+  async function judge(state) {
+    const topic = topicInput.value.trim();
+    if (!topic) {
+      $('settings').open = true;
+      topicInput.focus();
+      setStatus('先在设置里填 ntfy 主题', 'err');
+      return;
+    }
+    const reason = $('reason').value.trim();
+    const now = new Date();
+    const time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    // 公示页不存数据，判定内容全放在链接参数里
+    const showUrl = new URL('show.html', location.href);
+    showUrl.search = new URLSearchParams({ s: state.key, r: reason, t: now.getTime() }).toString();
+    const buttons = document.querySelectorAll('.state');
+    buttons.forEach((b) => (b.disabled = true));
+    setStatus('公示中…');
+    try {
+      // 不带自定义 header，避免 CORS 预检；中文标题放在 JSON 里不用转码
+      const res = await fetch(NTFY_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          topic,
+          title: `${state.face} 今日官方鉴定：${state.name}`,
+          message: `${reason ? '理由：' + reason : '裁判未说明理由'}\n判定时间 ${time}`,
+          priority: 4,
+          // 本地 file:// 打开时链接在他手机上没用，发布到网上后才带
+          ...(showUrl.protocol === 'https:' ? { click: showUrl.href } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      setStatus(`已公示：${state.name}（${time}）`, 'ok');
+      const link = document.createElement('a');
+      link.href = showUrl.href;
+      link.textContent = ' 看公示页';
+      link.style.color = 'inherit';
+      statusEl.appendChild(link);
+      $('reason').value = '';
+    } catch (e) {
+      setStatus('公示失败：' + e.message, 'err');
+    } finally {
+      buttons.forEach((b) => (b.disabled = false));
+    }
+  }
+
+  for (const state of STATES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'state';
+    btn.innerHTML = `<span class="face">${state.face}</span>${state.name}`;
+    btn.addEventListener('click', () => judge(state));
+    $('states').appendChild(btn);
+  }
+</script>
+</body>
+</html>

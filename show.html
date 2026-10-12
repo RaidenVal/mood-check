@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>今日官方鉴定</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--bg, #fff4f6);
+    color: var(--fg, #3a2a2e);
+    transition: background .3s;
+  }
+  .kicker { font-size: 14px; letter-spacing: .3em; opacity: .7; margin: 0 0 12px; }
+  canvas { display: block; }
+  h1 { font-size: 44px; margin: 12px 0 8px; }
+  #reason { font-size: 18px; margin: 0 0 8px; max-width: 22em; overflow-wrap: anywhere; }
+  #time { font-size: 13px; opacity: .7; margin: 0; }
+  #preview { margin-top: 28px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #preview button {
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 2px solid currentColor;
+    background: transparent;
+    color: inherit;
+  }
+</style>
+</head>
+<body>
+  <p class="kicker">今日官方鉴定</p>
+  <canvas id="pig"></canvas>
+  <h1 id="name"></h1>
+  <p id="reason"></p>
+  <p id="time"></p>
+  <div id="preview" hidden></div>
+
+<script>
+  // 16×13 的猪头，一个字符一个像素
+  const BASE = [
+    '..KK........KK..',
+    '.KDDK......KDDK.',
+    '.KDDDKKKKKKDDDK.',
+    '.KDPPPPPPPPPPDK.',
+    'KPPPPPPPPPPPPPPK',
+    'KPPPPPPPPPPPPPPK',
+    'KPPPPPPPPPPPPPPK',
+    'KPPPPDDDDDDPPPPK',
+    'KPPPDDKDDKDDPPPK',
+    'KPPPPDDDDDDPPPPK',
+    'KPPPPPPPPPPPPPPK',
+    '.KPPPPPPPPPPPPK.',
+    '..KKKKKKKKKKKK..',
+  ];
+  const COLORS = {
+    K: '#3a2a2e', P: '#f7a8b8', D: '#e07a92', H: '#ff7a9c',
+    B: '#4aa3ff', G: '#9aa3ad', Y: '#ffc93c', R: '#d8434e',
+  };
+  // 画布比猪头大一圈，给乌云、眼泪、火花留位置
+  const GRID_W = 20, GRID_H = 22, PIG_X = 2, PIG_Y = 7;
+  const FRAME_MS = 280;
+
+  const row = (y, x1, x2, c) => {
+    const out = [];
+    for (let x = x1; x <= x2; x++) out.push([x, y, c]);
+    return out;
+  };
+
+  // 每个场景返回这一帧的猪头位移 dx/dy 和叠加像素（坐标相对猪头左上角）
+  // pig 跟着猪头动，fx 固定不动
+  const SCENES = {
+    cry: {
+      name: '猪cry', bg: '#dcecff', fg: '#23344d',
+      frame(f) {
+        const pig = [
+          ...row(6, 3, 4, 'K'), ...row(6, 11, 12, 'K'),
+          [6, 11, 'K'], [7, 10, 'K'], [8, 10, 'K'], [9, 11, 'K'],
+        ];
+        for (const x of [3, 12]) {
+          for (const k of [0, 3]) pig.push([x, 7 + ((f + k) % 7), 'B']);
+        }
+        return { dx: 0, dy: 0, pig, fx: [] };
+      },
+    },
+    happy: {
+      name: '猪happy', bg: '#fff1c9', fg: '#4d3a10',
+      frame(f) {
+        const pig = [
+          [3, 6, 'K'], [4, 5, 'K'], [5, 6, 'K'],
+          [10, 6, 'K'], [11, 5, 'K'], [12, 6, 'K'],
+          [5, 10, 'K'], ...row(11, 6, 9, 'K'), [10, 10, 'K'],
+          ...row(8, 1, 2, 'H'), ...row(8, 13, 14, 'H'),
+        ];
+        return { dx: 0, dy: f % 2 ? -1 : 0, pig, fx: [] };
+      },
+    },
+    emo: {
+      name: '猪emo', bg: '#2b2f3a', fg: '#d5d9e3',
+      frame(f) {
+        const pig = [
+          ...row(5, 3, 4, 'D'), ...row(5, 11, 12, 'D'),
+          ...row(6, 3, 4, 'K'), ...row(6, 11, 12, 'K'),
+          ...row(10, 6, 9, 'K'),
+        ];
+        const drift = f % 8 < 4 ? 0 : 1;
+        const fx = [
+          ...row(-7, 6 + drift, 9 + drift, 'G'),
+          ...row(-6, 5 + drift, 11 + drift, 'G'),
+          ...row(-5, 4 + drift, 12 + drift, 'G'),
+        ];
+        [5, 8, 11].forEach((x, i) => fx.push([x, -4 + ((f + i) % 4), 'B']));
+        return { dx: 0, dy: 0, pig, fx };
+      },
+    },
+    heiya: {
+      name: '猪嘿呀', bg: '#ffd9d2', fg: '#5a1d16',
+      frame(f) {
+        const pig = [
+          [3, 4, 'K'], [4, 5, 'K'], [4, 6, 'K'],
+          [12, 4, 'K'], [11, 5, 'K'], [11, 6, 'K'],
+          ...row(10, 6, 9, 'K'), [6, 11, 'K'], [9, 11, 'K'], ...row(11, 7, 8, 'R'),
+        ];
+        const fx = f % 2
+          ? [[-2, 0, 'Y'], [17, 0, 'Y'], [-1, 3, 'Y'], [16, 3, 'Y']]
+          : [[-2, 2, 'Y'], [17, 2, 'Y'], [-1, -1, 'Y'], [16, -1, 'Y']];
+        return { dx: f % 2 ? 1 : -1, dy: 0, pig, fx };
+      },
+    },
+  };
+
+  const canvas = document.getElementById('pig');
+  const ctx = canvas.getContext('2d');
+  let cell = 1;
+
+  function resize() {
+    cell = Math.max(4, Math.floor(Math.min(window.innerWidth - 32, 400) / GRID_W));
+    canvas.width = GRID_W * cell;
+    canvas.height = GRID_H * cell;
+  }
+
+  function dot(x, y, c) {
+    ctx.fillStyle = COLORS[c];
+    ctx.fillRect((PIG_X + x) * cell, (PIG_Y + y) * cell, cell, cell);
+  }
+
+  function draw(scene, f) {
+    const { dx, dy, pig, fx } = scene.frame(f);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    BASE.forEach((line, y) => {
+      for (let x = 0; x < line.length; x++) {
+        if (line[x] !== '.') dot(x + dx, y + dy, line[x]);
+      }
+    });
+    for (const [x, y, c] of pig) dot(x + dx, y + dy, c);
+    for (const [x, y, c] of fx) dot(x, y, c);
+  }
+
+  const params = new URLSearchParams(location.search);
+  let scene = SCENES[params.get('s')];
+  let frame = 0;
+
+  function show(next) {
+    scene = next;
+    document.body.style.setProperty('--bg', scene.bg);
+    document.body.style.setProperty('--fg', scene.fg);
+    document.getElementById('name').textContent = scene.name;
+    document.title = '今日官方鉴定：' + scene.name;
+    draw(scene, frame);
+  }
+
+  // 没带参数直接打开时，当成预览页，可以切换四个状态
+  if (!scene) {
+    const preview = document.getElementById('preview');
+    preview.hidden = false;
+    for (const key of Object.keys(SCENES)) {
+      const btn = document.createElement('button');
+      btn.textContent = SCENES[key].name;
+      btn.addEventListener('click', () => show(SCENES[key]));
+      preview.appendChild(btn);
+    }
+    scene = SCENES.happy;
+    document.getElementById('reason').textContent = '（预览）判定理由会显示在这里';
+  } else {
+    const reason = params.get('r');
+    document.getElementById('reason').textContent = reason ? '理由：' + reason : '裁判未说明理由';
+    const t = Number(params.get('t'));
+    if (t) {
+      document.getElementById('time').textContent = '判定时间 ' + new Date(t).toLocaleString('zh-CN', {
+        month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+    }
+  }
+
+  resize();
+  show(scene);
+  window.addEventListener('resize', () => { resize(); draw(scene, frame); });
+  setInterval(() => { frame++; draw(scene, frame); }, FRAME_MS);
+</script>
+</body>
+</html>
